@@ -40,6 +40,7 @@ class RateLimiter:
         self.interval = 1.1 * 60 / rpm
         self.rpm = rpm
         self.retries = 0  # keep track of the number of retries
+        self.request_count = 0  # keep track of the number of requests made
 
     def split_batches(self, batch):
         return [batch[i : i + self.rpm] for i in range(0, len(batch), self.rpm)]
@@ -62,6 +63,12 @@ class RateLimiter:
             self.retries = 0  # reset the number of retries
 
         self.last_call_time = time.time()
+
+        # Increment the request count and stop making requests if close to the limit
+        self.request_count += num_requests
+        if self.request_count >= self.rpm * 0.9:
+            logger.info("Close to rate limit, stopping requests")
+            return
 
 
 class Costs(NamedTuple):
