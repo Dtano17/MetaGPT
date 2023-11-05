@@ -30,15 +30,16 @@ from metagpt.utils.token_counter import (
 )
 
 
+import random
+
 class RateLimiter:
     """Rate control class, each call goes through wait_if_needed, sleep if rate control is needed"""
 
     def __init__(self, rpm):
         self.last_call_time = 0
-        # Here 1.1 is used because even if the calls are made strictly according to time,
-        # they will still be QOS'd; consider switching to simple error retry later
         self.interval = 1.1 * 60 / rpm
         self.rpm = rpm
+        self.retries = 0  # keep track of the number of retries
 
     def split_batches(self, batch):
         return [batch[i : i + self.rpm] for i in range(0, len(batch), self.rpm)]
@@ -49,8 +50,16 @@ class RateLimiter:
 
         if elapsed_time < self.interval * num_requests:
             remaining_time = self.interval * num_requests - elapsed_time
-            logger.info(f"sleep {remaining_time}")
-            await asyncio.sleep(remaining_time)
+            # Add exponential backoff
+            backoff = (2 ** self.retries) - 1
+            # Add jitter
+            jitter = random.uniform(0, 1)
+            sleep_time = remaining_time + backoff + jitter
+            logger.info(f"sleep {sleep_time}")
+            await asyncio.sleep(sleep_time)
+            self.retries += 1  # increment the number of retries
+        else:
+            self.retries = 0  # reset the number of retries
 
         self.last_call_time = time.time()
 
